@@ -6,7 +6,7 @@ a tiny vm experiment in C
 Why?
 ----
 
-Because my C is super rusty and I could use the practice.
+Because my C is super rusty and I could use the practice. With that in mind, please note that this code is probably rather awful-looking to an experienced C programmer. I'm just doing this for my own continuing education.
 
 What it does now
 ----------------

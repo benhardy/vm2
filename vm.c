@@ -71,13 +71,17 @@ int32_t stack[STACK_SIZE];
 int32_t code[CODE_SIZE] = {
 
   I_PUSH, 5,
-  I_PUSH, 7,
-  I_CALL, 12, 2,
+  I_CALL, 33, 1,
   I_STOP,
+  I_NOP, I_NOP,
+
   // def return_1()
+// @8:
   I_PUSH, 1,
   I_RETURN,
   I_NOP,
+
+// @12:
   // def multiply(x,y) {
   I_PUSH,    0,  // int total = 0;
   // while (x !=0 ) {
@@ -92,7 +96,27 @@ int32_t code[CODE_SIZE] = {
   I_JMP, -16,
   // }
   I_POP,
-  I_RETURN
+  I_RETURN,
+  
+  I_NOP,
+
+// @33
+  // factorial(n) { 
+  I_FRPUSH, -5,
+  I_JNZ, 4,     // if (!n)
+  I_POP,
+  I_PUSH, 1,
+  I_RETURN,     //    return 1;
+  I_DEC,        // n--;
+  I_JNZ, 4,     // if (!n)
+  I_POP,
+  I_PUSH, 1,    //    return 1;
+  I_RETURN,     
+  I_CALL, 33, 1, // get fact(n-1)
+  I_FRPUSH, -5,
+  I_CALL, 12, 2, // multiply by n
+  I_RETURN,
+  
 };
 
 int32_t ip = 0;  // instruction pointer
@@ -167,7 +191,6 @@ void execute(bool trace) {
           fatal = true;
         } else {
           y = fp + code[ip++];
-          printf("frpop: y= %d\n", y);
           stack[y] = stack[sp--];
         }
         break;
@@ -204,7 +227,6 @@ void execute(bool trace) {
         stack[++sp] = ip;
         stack[++sp] = fp;
         ip = dest;
-        printf("Call: ip updated to %d\n", ip);
         fp = sp + 1;
         break;
       }
@@ -227,7 +249,7 @@ void execute(bool trace) {
 void trace_it(int32_t ip) {
   int opcode = code[ip];
   state_dump();
-  printf("\n ip=%d, sp=%d, fp=%d\n", ip, sp, fp);
+  printf("    REGS: ip=%d, sp=%d, fp=%d\n", ip, sp, fp);
   printf("%04x %10s ", ip, instructions[opcode]);
   int arg_count = args[opcode];
   if (arg_count >= 1) {
@@ -240,16 +262,18 @@ void trace_it(int32_t ip) {
   } else {
     printf("      ");
   }
+  puts("\n");
 }
 
 void state_dump() {
   int t;
-  printf("\nSTACK: [ ");
+  printf("   STACK: [ ");
   for (t = 0; t <= sp; t++) {
     printf("%d ", stack[t]);
   }
   puts("]");
-  printf("DATA:  [ ");
+  return;
+  printf("    DATA: [ ");
   for (t = 0; t <= 20; t++) {
     printf("%d ", data[t]);
   }

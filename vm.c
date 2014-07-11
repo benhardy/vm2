@@ -18,6 +18,9 @@
 #define I_RETURN    11
 #define I_FRPUSH    12
 #define I_FRPOP    13
+#define I_JZ 14
+#define I_POP 15
+#define I_JMP 16
 
 char *instructions[] = {
   "NOP",
@@ -34,7 +37,11 @@ char *instructions[] = {
   "RETURN",
   "FRPUSH", // push from Frame-pointer relative address in stack (i.e. read local variable)
   "FRPOP",  // pop to Frame-pointer relative address in stack (i.e. write local variable)
+  "JZ",
+  "POP",
+  "JMP",  // unconditional relative jump
 };
+
 int args[256] = {
   0, // nop
   0, // stop
@@ -49,7 +56,10 @@ int args[256] = {
   2, // call
   0, // return
   1, // frpush
-  1. // frpop
+  1, // frpop
+  1, // jnz
+  0, // pop
+  1, // jmp
 };
 
 #define DATA_SIZE 8192
@@ -62,27 +72,26 @@ int32_t code[CODE_SIZE] = {
 
   I_PUSH, 5,
   I_PUSH, 7,
-  I_CALL, 12, 0,
+  I_CALL, 12, 2,
   I_STOP,
   // def return_1()
   I_PUSH, 1,
   I_RETURN,
   I_NOP,
   // def multiply(x,y) {
-  I_FRPUSH, -6,  // int count = x
   I_PUSH,    0,  // int total = 0;
-  I_FRPUSH,  0,  // push count
-  //top:
-  I_FRPOP,   0,  // pop count
-  I_FRPUSH, -5,  // push y
-  I_FRPUSH, 0,   // push total
-  I_ADD,         // total+=y
-  I_FRPOP, 1,    // store total
-  I_FRPUSH, 0,   // push count
-  I_DEC,
-  I_JNZ, -14,
-  I_FRPUSH, 1,
-// } while iteration count > 0
+  // while (x !=0 ) {
+  I_FRPUSH, -6,
+  I_JZ, +12, // exit loop
+  I_DEC,         // x--
+  I_FRPOP, -6,   // store x
+  I_FRPUSH, 0,
+  I_FRPUSH, -5,
+  I_ADD,
+  I_FRPOP, 0,
+  I_JMP, -16,
+  // }
+  I_POP,
   I_RETURN
 };
 
@@ -95,8 +104,10 @@ void trace_it(int32_t);
 void state_dump();
 
 int main(int argc, char**argv) {
+  printf("START:\n");
   execute(true);
   state_dump();
+  exit(0);
 }
 
 void execute(bool trace) {
@@ -115,6 +126,9 @@ void execute(bool trace) {
         return;
       case I_PUSH:
         stack[++sp] = code[ip++];
+        break;
+      case I_POP:
+        sp--;
         break;
       case I_ADD:
         if (sp < 0) {
@@ -167,9 +181,19 @@ void execute(bool trace) {
         break;
       case I_JNZ:
         y = code[ip++];
-        if (stack[sp] != 0) {
+        if (stack[sp]) {
           ip += y;
         }
+        break;
+      case I_JZ:
+        y = code[ip++];
+        if (!stack[sp]) {
+          ip += y;
+        }
+        break;
+      case I_JMP:
+        y = code[ip++];
+        ip += y;
         break;
       case I_CALL: {
         int32_t dest = code[ip++];
@@ -187,7 +211,7 @@ void execute(bool trace) {
       case I_RETURN: {
         int32_t return_value = stack[sp--];
         int32_t old_fp = fp;
-        sp = stack[old_fp-3] - stack[old_fp-4];;
+        sp = stack[old_fp-3] - stack[old_fp-4];
         ip = stack[old_fp-2];
         fp = stack[old_fp-1];
         stack[++sp] = return_value;
@@ -203,6 +227,7 @@ void execute(bool trace) {
 void trace_it(int32_t ip) {
   int opcode = code[ip];
   state_dump();
+  printf("\n ip=%d, sp=%d, fp=%d\n", ip, sp, fp);
   printf("%04x %10s ", ip, instructions[opcode]);
   int arg_count = args[opcode];
   if (arg_count >= 1) {
@@ -215,7 +240,6 @@ void trace_it(int32_t ip) {
   } else {
     printf("      ");
   }
-  printf("\n ip=%d[%d], sp=%d[%d], fp=%d[%d]\n", ip, code[ip], sp, stack[sp], fp, stack[fp]);
 }
 
 void state_dump() {

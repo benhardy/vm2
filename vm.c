@@ -21,6 +21,7 @@
 #define I_JZ 14
 #define I_POP 15
 #define I_JMP 16
+#define I_MUL 17
 
 char *instructions[] = {
   "NOP",
@@ -40,6 +41,7 @@ char *instructions[] = {
   "JZ",
   "POP",
   "JMP",  // unconditional relative jump
+  "MUL"
 };
 
 int args[256] = {
@@ -60,6 +62,7 @@ int args[256] = {
   1, // jnz
   0, // pop
   1, // jmp
+  0, // mul
 };
 
 #define DATA_SIZE 8192
@@ -114,7 +117,7 @@ int32_t code[CODE_SIZE] = {
   I_RETURN,     
   I_CALL, 33, 1, // get fact(n-1)
   I_FRPUSH, -5,
-  I_CALL, 12, 2, // multiply by n
+  I_MUL,
   I_RETURN,
   
 };
@@ -162,6 +165,16 @@ void execute(bool trace) {
           x = stack[sp--];
           y = stack[sp];
           stack[sp] = x + y;
+        }
+        break;
+      case I_MUL:
+        if (sp < 0) {
+          printf("Stack underflow");
+          fatal = true;
+        } else {
+          x = stack[sp--];
+          y = stack[sp];
+          stack[sp] = x * y;
         }
         break;
       case I_INC:

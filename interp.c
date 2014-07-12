@@ -6,12 +6,17 @@
 
 #include "opcodes.h"
 
-#define TOKEN_NUMBER        0x11
+#define TOKEN_NUMBER        0x01
+
 #define TOKEN_PLUS          0x12
 #define TOKEN_MINUS         0x13
-#define TOKEN_STAR          0x14
-#define TOKEN_OPEN_PAREN    0x15
-#define TOKEN_CLOSE_PAREN   0x16
+
+#define TOKEN_MULT          0x34
+#define TOKEN_DIV           0x35
+#define TOKEN_MOD           0x36
+
+#define TOKEN_OPEN_PAREN    0x80
+#define TOKEN_CLOSE_PAREN   0x81
 
 #define TOKEN_TABLE_SIZE 0x1000
 
@@ -47,7 +52,9 @@ char* token_to_string(Token*token) {
   switch(token->kind) {
     case TOKEN_PLUS: return "+";
     case TOKEN_MINUS: return "-";
-    case TOKEN_STAR: return "*";
+    case TOKEN_MULT: return "*";
+    case TOKEN_DIV: return "/";
+    case TOKEN_MOD: return "%";
     case TOKEN_OPEN_PAREN: return "(";
     case TOKEN_CLOSE_PAREN: return ")";
   }
@@ -100,7 +107,9 @@ Token* scan_input(Buffer *buffer) {
         case ')': kind = TOKEN_CLOSE_PAREN; break;
         case '+': kind = TOKEN_PLUS; break;
         case '-': kind = TOKEN_MINUS; break;
-        case '*': kind = TOKEN_STAR; break;
+        case '*': kind = TOKEN_MULT; break;
+        case '/': kind = TOKEN_DIV; break;
+        case '%': kind = TOKEN_MOD; break;
         default:  kind = 0;
       }
       if (kind) {
@@ -149,7 +158,9 @@ AST_Node * new_branch_node() {
   return node;
 }
 
-AST_Node * parse_expression(Token** tokens);
+AST_Node * parse_addables(Token** tokens);
+AST_Node * parse_multipliables(Token** tokens);
+AST_Node * parse_term(Token** tokens);
 
 AST_Node * parse_term(Token** tokens) {
   printf("parse_term starts &tokens=%08lx\n", tokens);
@@ -161,7 +172,7 @@ AST_Node * parse_term(Token** tokens) {
     puts("parse_term found a paren, calling parse to extract subexpression");
     node = new_branch_node();
     current = current->next;
-    node->left = parse_expression(&current);
+    node->left = parse_addables(&current);
     if (!current || current->kind != TOKEN_CLOSE_PAREN) {
       fputs("closing parenthesis expected\n", stderr);
       return NULL;
@@ -181,14 +192,14 @@ AST_Node * parse_term(Token** tokens) {
   return NULL;
 }
 
-AST_Node * parse_expression(Token** tokens) {
+AST_Node * parse_multipliables(Token** tokens) {
   printf("parse starts &tokens=%08lx\n", tokens);
   Token *current = *tokens;
   AST_Node * lhs = parse_term(&current);
   if (!lhs) {
     return NULL;
   }
-  while (current && (current->kind == TOKEN_PLUS || current->kind == TOKEN_MINUS)) {
+  while (current && (current->kind == TOKEN_MULT || current->kind == TOKEN_DIV || current->kind == TOKEN_MOD)) {
     printf("parse: found connecting operator %s\n", token_to_string(current));
     Token * operator = current;
     current = current->next;
@@ -207,8 +218,35 @@ AST_Node * parse_expression(Token** tokens) {
   return lhs;
 }
 
+
+AST_Node * parse_addables(Token** tokens) {
+  printf("parse starts &tokens=%08lx\n", tokens);
+  Token *current = *tokens;
+  AST_Node * lhs = parse_multipliables(&current);
+  if (!lhs) {
+    return NULL;
+  }
+  while (current && (current->kind == TOKEN_PLUS || current->kind == TOKEN_MINUS)) {
+    printf("parse: found connecting operator %s\n", token_to_string(current));
+    Token * operator = current;
+    current = current->next;
+    AST_Node * rhs = parse_multipliables(&current);
+    if (!rhs) {
+      fputs("right hand side expected\n", stderr);
+      return NULL;
+    }
+    AST_Node *parent = new_branch_node();
+    parent->left = lhs;
+    parent->right = rhs;
+    parent->operator = operator;
+    lhs = parent;
+  }
+  *tokens=current;
+  return lhs;
+}
+
 AST_Node* begin_parsing(Token*head) {
-  return parse_expression(&head);
+  return parse_addables(&head);
 }
 
 void free_tree(AST_Node* root) {

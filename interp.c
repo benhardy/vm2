@@ -22,6 +22,15 @@
 
 #define INPUT_SIZE_MAX 0x10000
 
+//#define TRACE_ON
+
+#ifdef TRACE_ON
+#define log_trace(...) fprintf(stderr,  __VA_ARGS__)
+#else
+#define log_trace(...) ;
+#endif
+#define log_warn(...) fprintf(stderr,  __VA_ARGS__)
+
 typedef struct _Token {
   int kind;
   int token_table_index;
@@ -137,6 +146,7 @@ typedef struct _AST_Node {
   struct _AST_Node *left;
   Token* operator;
   struct _AST_Node *right;
+  bool apply_unary_minus; // result must be negated
 } AST_Node;
 
 AST_Node * new_leaf_node(Token*token) {
@@ -146,6 +156,7 @@ AST_Node * new_leaf_node(Token*token) {
   node->left = NULL;
   node->right = NULL;
   node->operator = NULL;
+  node->apply_unary_minus = false;
   return node;
 }
 AST_Node * new_branch_node() {
@@ -155,34 +166,39 @@ AST_Node * new_branch_node() {
   node->left = NULL;
   node->right = NULL;
   node->operator = NULL;
+  node->apply_unary_minus = false;
   return node;
 }
 
 AST_Node * parse_addables(Token** tokens);
 AST_Node * parse_multipliables(Token** tokens);
 AST_Node * parse_term(Token** tokens);
+AST_Node * parse_unary_minus(Token** tokens);
 
 AST_Node * parse_term(Token** tokens) {
-  printf("parse_term starts &tokens=%08lx\n", tokens);
+  log_trace("parse_term starts &tokens=%08lx\n", tokens);
   Token *current = *tokens;
   //printf("parse_term starts B, current=%08lx\n", current);
   AST_Node * node = NULL;
   //printf("parse_term starts C, node=%08lx\n", node);
   if (current->kind == TOKEN_OPEN_PAREN) {
-    puts("parse_term found a paren, calling parse to extract subexpression");
-    node = new_branch_node();
+    log_trace("parse_term found a paren, calling parse to extract subexpression");
     current = current->next;
-    node->left = parse_addables(&current);
+    AST_Node * child = parse_addables(&current);
     if (!current || current->kind != TOKEN_CLOSE_PAREN) {
       fputs("closing parenthesis expected\n", stderr);
       return NULL;
     }
     current = current->next;
     *tokens = current;
+    if (child->leaf)
+      return child;
+    node = new_branch_node();
+    node->left = child;
     return node;
   }
   if (current->kind == TOKEN_NUMBER) {
-    puts("parse_term found a number\n");
+    log_trace("parse_term found a number %s\n", token_to_string(current));
     node = new_leaf_node(current);
     current = current->next;
     *tokens = current; // we consume this token, update pointer
@@ -192,18 +208,43 @@ AST_Node * parse_term(Token** tokens) {
   return NULL;
 }
 
-AST_Node * parse_multipliables(Token** tokens) {
-  printf("parse starts &tokens=%08lx\n", tokens);
+AST_Node * parse_unary_minus(Token** tokens) {
+  log_trace("parse_unary_minus starts &tokens=%08lx\n", tokens);
   Token *current = *tokens;
-  AST_Node * lhs = parse_term(&current);
+  if (!current)
+    return NULL;
+  if (current->kind != TOKEN_MINUS) {
+    return parse_term(tokens);
+  }
+  current = current->next;
+  if (!current) {
+    fputs("expression expected after unary minus", stderr);
+    return NULL;
+  }
+  AST_Node *term = parse_term(&current);
+  if (!term) {
+    fputs("unary - present but no term after\n", stderr);
+    return NULL;
+  }
+  *tokens = current;
+  log_trace("processing unary minus. term unaryism was %d\n", term->apply_unary_minus);
+  term->apply_unary_minus = ! term->apply_unary_minus;
+  log_trace("processing unary minus. term unaryism is now %d\n", term->apply_unary_minus);
+  return term;
+}
+
+AST_Node * parse_multipliables(Token** tokens) {
+  log_trace("parse starts &tokens=%08lx\n", tokens);
+  Token *current = *tokens;
+  AST_Node * lhs = parse_unary_minus(&current);
   if (!lhs) {
     return NULL;
   }
   while (current && (current->kind == TOKEN_MULT || current->kind == TOKEN_DIV || current->kind == TOKEN_MOD)) {
-    printf("parse: found connecting operator %s\n", token_to_string(current));
+    log_trace("parse: found connecting operator %s\n", token_to_string(current));
     Token * operator = current;
     current = current->next;
-    AST_Node * rhs = parse_term(&current);
+    AST_Node * rhs = parse_unary_minus(&current);
     if (!rhs) {
       fputs("right hand side expected\n", stderr);
       return NULL;
@@ -220,19 +261,19 @@ AST_Node * parse_multipliables(Token** tokens) {
 
 
 AST_Node * parse_addables(Token** tokens) {
-  printf("parse starts &tokens=%08lx\n", tokens);
+  log_trace("parse starts &tokens=%08lx\n", tokens);
   Token *current = *tokens;
   AST_Node * lhs = parse_multipliables(&current);
   if (!lhs) {
     return NULL;
   }
   while (current && (current->kind == TOKEN_PLUS || current->kind == TOKEN_MINUS)) {
-    printf("parse: found connecting operator %s\n", token_to_string(current));
+    log_trace("parse: found connecting operator %s\n", token_to_string(current));
     Token * operator = current;
     current = current->next;
     AST_Node * rhs = parse_multipliables(&current);
     if (!rhs) {
-      fputs("right hand side expected\n", stderr);
+      log_trace("right hand side expected\n");
       return NULL;
     }
     AST_Node *parent = new_branch_node();
@@ -250,26 +291,37 @@ AST_Node* begin_parsing(Token*head) {
 }
 
 void free_tree(AST_Node* root) {
-  fputs("free_tree not implemented\n", stderr);
+  log_warn("free_tree not implemented\n");
 }
 
 void print_postfix(AST_Node* tree) {
   if (tree->leaf) {
+    if (tree->apply_unary_minus)
+      fputs("-", stdout);
     fputs(token_to_string(tree->token), stdout);
   } else {
-    if (tree->right) {
       fputs("[", stdout);
       print_postfix(tree->left);
-      fputs(" ", stdout);
-      print_postfix(tree->right);
+      if (tree->right) {
+        fputs(",", stdout);
+        print_postfix(tree->right);
+      }
       fputs("]", stdout);
-      fputs(token_to_string(tree->operator), stdout);
-    } else {
-      print_postfix(tree->left);
-    }
+      if (tree->right) {
+        fputs(token_to_string(tree->operator), stdout);
+      }
+    if (tree->apply_unary_minus)
+      fputs("neg", stdout);
   }
 }
-  
+
+void dump_tokens(Token*token_list) {
+  Token *cur = token_list;
+  while(cur) {
+    printf("TOKEN kind=%d value=%s\n", cur->kind, token_to_string(cur));
+    cur = cur->next;
+  }
+}
 
 int main(int argc, char**args) {
   bool keep_going = true;
@@ -278,27 +330,20 @@ int main(int argc, char**args) {
   buf.content = input;
   while(keep_going) { 
     Token * token_list = NULL;
-    Token *cur;
-    printf("vm> ");
+    printf("\nvm> ");
     if (!fgets(buf.content, buf.size, stdin)) 
       break;
     token_list = scan_input(&buf);
     if (!token_list) {
       continue;;
     }
-    cur = token_list;
-    while(cur) {
-      printf("TOKEN kind=%d value=%s\n", cur->kind, token_to_string(cur));
-      cur = cur->next;
-    }
-    puts("caling parse\n");
+    //dump_tokens(token_list);
+    log_trace("caling parse\n");
     AST_Node *root = begin_parsing(token_list);
     if (!root) {
       fputs("Syntax error", stderr);
     } else {
-      puts("caling print_postfix\n");
       print_postfix(root);
-      puts("\n done caling print_postfix\n");
       free_tree(root);
     }
     free_token_list(token_list);

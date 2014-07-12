@@ -3,7 +3,7 @@ all: interp vm
 
 OBJECTS = vm.o 
 
-vm : $(OBJECTS)
+vm : $(OBJECTS) opcodes.h
 	cc -o vm $(OBJECTS)
 
 interp: interp.o

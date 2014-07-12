@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <ctype.h>
 
+#include "opcodes.h"
+
 #define TOKEN_NUMBER        0x11
 #define TOKEN_PLUS          0x12
 #define TOKEN_MINUS         0x13
@@ -183,13 +185,11 @@ AST_Node * parse_expression(Token** tokens) {
   printf("parse starts &tokens=%08lx\n", tokens);
   Token *current = *tokens;
   AST_Node * lhs = parse_term(&current);
-  if (!current) {
-    printf("parse: reached end of expression\n");
-    *tokens=current;
-    return lhs;
+  if (!lhs) {
+    return NULL;
   }
-  printf("parse: found connecting operator %s\n", token_to_string(current));
-  if (current->kind == TOKEN_PLUS) {
+  while (current && (current->kind == TOKEN_PLUS || current->kind == TOKEN_MINUS)) {
+    printf("parse: found connecting operator %s\n", token_to_string(current));
     Token * operator = current;
     current = current->next;
     AST_Node * rhs = parse_term(&current);
@@ -200,12 +200,11 @@ AST_Node * parse_expression(Token** tokens) {
     AST_Node *parent = new_branch_node();
     parent->left = lhs;
     parent->right = rhs;
-    parent->operator = operator;;
-    *tokens=current;
-    return parent;
+    parent->operator = operator;
+    lhs = parent;
   }
-  fprintf(stderr, "parse: unexpected symbol '%s'",token_to_string(current));
-  return NULL;
+  *tokens=current;
+  return lhs;
 }
 
 AST_Node* begin_parsing(Token*head) {

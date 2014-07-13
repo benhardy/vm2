@@ -5,6 +5,7 @@
 #include <ctype.h>
 
 #include "opcodes.h"
+#include "vm.h"
 
 #define TOKEN_NUMBER        0x01
 
@@ -363,7 +364,10 @@ void dump_tokens(Token*token_list) {
   }
 }
 
+#define CODE_SIZE 4096
+#define DATA_SIZE 128
 int code[4096];
+int data[4096];
 
 int main(int argc, char**args) {
   bool keep_going = true;
@@ -380,7 +384,7 @@ int main(int argc, char**args) {
       continue;;
     }
     //dump_tokens(token_list);
-    log_trace("caling parse\n");
+    log_trace("calling parse\n");
     AST_Node *root = begin_parsing(token_list);
     if (!root) {
       fputs("Syntax error", stderr);
@@ -389,6 +393,9 @@ int main(int argc, char**args) {
       puts("\n");
       write_instructions(root, code);
       free_tree(root);
+      init(code, CODE_SIZE, data, DATA_SIZE);
+      execute(true);
+      state_dump();
     }
     free_token_list(token_list);
   }

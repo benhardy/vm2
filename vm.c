@@ -3,78 +3,30 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "vm.h"
 #include "opcodes.h"
 
-#define DATA_SIZE 8192
-#define CODE_SIZE 8192
 #define STACK_SIZE 8192
 
-int32_t data[DATA_SIZE] = { 7, 5 };
-int32_t stack[STACK_SIZE];
-int32_t code[CODE_SIZE] = {
-
-  I_PUSH, 5,
-  I_CALL, 33, 1,
-  I_STOP,
-  I_NOP, I_NOP,
-
-  // def return_1()
-// @8:
-  I_PUSH, 1,
-  I_RETURN,
-  I_NOP,
-
-// @12:
-  // def multiply(x,y) {
-  I_PUSH,    0,  // int total = 0;
-  // while (x !=0 ) {
-  I_FRPUSH, -6,
-  I_JZ, +12, // exit loop
-  I_DEC,         // x--
-  I_FRPOP, -6,   // store x
-  I_FRPUSH, 0,
-  I_FRPUSH, -5,
-  I_ADD,
-  I_FRPOP, 0,
-  I_JMP, -16,
-  // }
-  I_POP,
-  I_RETURN,
-  
-  I_NOP,
-
-// @33
-  // factorial(n) { 
-  I_FRPUSH, -5,
-  I_JNZ, 4,     // if (!n)
-  I_POP,
-  I_PUSH, 1,
-  I_RETURN,     //    return 1;
-  I_DEC,        // n--;
-  I_JNZ, 4,     // if (!n)
-  I_POP,
-  I_PUSH, 1,    //    return 1;
-  I_RETURN,     
-  I_CALL, 33, 1, // get fact(n-1)
-  I_FRPUSH, -5,
-  I_MUL,
-  I_RETURN,
-  
-};
 
 int32_t ip = 0;  // instruction pointer
 int32_t sp = -1; // stack pointer
 int32_t fp = 0;  // frame pointer
 
-void execute(bool);
-void trace_it(int32_t);
-void state_dump();
+int32_t _stack[STACK_SIZE];
+int32_t* _code;
+int32_t* _data;
+int _code_size;
+int _data_size;
 
-int main(int argc, char**argv) {
-  printf("START:\n");
-  execute(true);
-  state_dump();
-  exit(0);
+void init(int32_t*code, int code_size, int32_t*data, int data_size) {
+  _code = code;
+  _data = data;
+  _code_size = code_size;
+  _data_size = data_size;
+  ip = 0;
+  sp = -1;
+  fp = 0;
 }
 
 void execute(bool trace) {
@@ -82,8 +34,8 @@ void execute(bool trace) {
   int32_t y;
   int32_t opcode;
   bool fatal = false;
-  while (ip < CODE_SIZE && !fatal) {
-    opcode = code[ip];
+  while (ip < _code_size && !fatal) {
+    opcode = _code[ip];
     if (trace) {
       trace_it(ip);
     }
@@ -92,7 +44,7 @@ void execute(bool trace) {
       case I_STOP:
         return;
       case I_PUSH:
-        stack[++sp] = code[ip++];
+        _stack[++sp] = _code[ip++];
         break;
       case I_POP:
         sp--;
@@ -102,9 +54,9 @@ void execute(bool trace) {
           printf("Stack underflow");
           fatal = true;
         } else {
-          x = stack[sp--];
-          y = stack[sp];
-          stack[sp] = x + y;
+          x = _stack[sp--];
+          y = _stack[sp];
+          _stack[sp] = x + y;
         }
         break;
       case I_MUL:
@@ -112,39 +64,39 @@ void execute(bool trace) {
           printf("Stack underflow");
           fatal = true;
         } else {
-          x = stack[sp--];
-          y = stack[sp];
-          stack[sp] = x * y;
+          x = _stack[sp--];
+          y = _stack[sp];
+          _stack[sp] = x * y;
         }
         break;
       case I_INC:
-        stack[sp]++;
+        _stack[sp]++;
         break;
       case I_DEC:
-        stack[sp]--;
+        _stack[sp]--;
         break;
       case I_LOADPUSH:
-        stack[++sp] = data[code[ip++]];
+        _stack[++sp] = _data[_code[ip++]];
         break;
       case I_POPSTORE:
         if (sp < 0) {
           printf("Stack underflow");
           fatal = true;
         } else {
-          data[code[ip++]] = stack[sp--];
+          _data[_code[ip++]] = _stack[sp--];
         }
         break;
       case I_FRPUSH:
-        y = fp + code[ip++];
-        stack[++sp] = stack[y];
+        y = fp + _code[ip++];
+        _stack[++sp] = _stack[y];
         break;
       case I_FRPOP:
         if (sp < 0) {
           printf("Stack underflow");
           fatal = true;
         } else {
-          y = fp + code[ip++];
-          stack[y] = stack[sp--];
+          y = fp + _code[ip++];
+          _stack[y] = _stack[sp--];
         }
         break;
       case I_STORE:
@@ -152,44 +104,44 @@ void execute(bool trace) {
           printf("Stack underflow");
           fatal = true;
         } else {
-          data[code[ip++]] = stack[sp];
+          _data[_code[ip++]] = _stack[sp];
         }
         break;
       case I_JNZ:
-        y = code[ip++];
-        if (stack[sp]) {
+        y = _code[ip++];
+        if (_stack[sp]) {
           ip += y;
         }
         break;
       case I_JZ:
-        y = code[ip++];
-        if (!stack[sp]) {
+        y = _code[ip++];
+        if (!_stack[sp]) {
           ip += y;
         }
         break;
       case I_JMP:
-        y = code[ip++];
+        y = _code[ip++];
         ip += y;
         break;
       case I_CALL: {
-        int32_t dest = code[ip++];
-        int32_t arg_count = code[ip++];
+        int32_t dest = _code[ip++];
+        int32_t arg_count = _code[ip++];
         int32_t old_sp = sp;
-        stack[++sp] = arg_count;
-        stack[++sp] = old_sp;;
-        stack[++sp] = ip;
-        stack[++sp] = fp;
+        _stack[++sp] = arg_count;
+        _stack[++sp] = old_sp;;
+        _stack[++sp] = ip;
+        _stack[++sp] = fp;
         ip = dest;
         fp = sp + 1;
         break;
       }
       case I_RETURN: {
-        int32_t return_value = stack[sp--];
+        int32_t return_value = _stack[sp--];
         int32_t old_fp = fp;
-        sp = stack[old_fp-3] - stack[old_fp-4];
-        ip = stack[old_fp-2];
-        fp = stack[old_fp-1];
-        stack[++sp] = return_value;
+        sp = _stack[old_fp-3] - _stack[old_fp-4];
+        ip = _stack[old_fp-2];
+        fp = _stack[old_fp-1];
+        _stack[++sp] = return_value;
         break;
       }
       default:
@@ -200,18 +152,18 @@ void execute(bool trace) {
 }
 
 void trace_it(int32_t ip) {
-  int opcode = code[ip];
+  int opcode = _code[ip];
   state_dump();
   printf("    REGS: ip=%d, sp=%d, fp=%d\n", ip, sp, fp);
   printf("%04x %10s ", ip, instructions[opcode]);
   int arg_count = args[opcode];
   if (arg_count >= 1) {
-    printf("%4d", code[ip+1]);
+    printf("%4d", _code[ip+1]);
   } else {
     printf("    ");
   }
   if (arg_count >= 2) {
-    printf(", %4d", code[ip+2]);
+    printf(", %4d", _code[ip+2]);
   } else {
     printf("      ");
   }
@@ -222,13 +174,13 @@ void state_dump() {
   int t;
   printf("   STACK: [ ");
   for (t = 0; t <= sp; t++) {
-    printf("%d ", stack[t]);
+    printf("%d ", _stack[t]);
   }
   puts("]");
   return;
   printf("    DATA: [ ");
   for (t = 0; t <= 20; t++) {
-    printf("%d ", data[t]);
+    printf("%d ", _data[t]);
   }
   puts("]");
 }

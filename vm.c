@@ -5,48 +5,6 @@
 
 #include "opcodes.h"
 
-char *instructions[] = {
-  "NOP",
-  "STOP",
-  "PUSH",
-  "ADD",
-  "INC",
-  "DEC",
-  "JNZ",
-  "LOADPUSH",
-  "POPSTORE",
-  "STORE",
-  "CALL",
-  "RETURN",
-  "FRPUSH", // push from Frame-pointer relative address in stack (i.e. read local variable)
-  "FRPOP",  // pop to Frame-pointer relative address in stack (i.e. write local variable)
-  "JZ",
-  "POP",
-  "JMP",  // unconditional relative jump
-  "MUL"
-};
-
-int args[256] = {
-  0, // nop
-  0, // stop
-  1, // push
-  0, // add
-  0, // inc 
-  0, // dec
-  1, // jnz
-  1, // loadpush
-  1, // popstore
-  1, // store
-  2, // call
-  0, // return
-  1, // frpush
-  1, // frpop
-  1, // jnz
-  0, // pop
-  1, // jmp
-  0, // mul
-};
-
 #define DATA_SIZE 8192
 #define CODE_SIZE 8192
 #define STACK_SIZE 8192

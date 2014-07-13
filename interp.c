@@ -175,6 +175,8 @@ AST_Node * parse_multipliables(Token** tokens);
 AST_Node * parse_term(Token** tokens);
 AST_Node * parse_unary_minus(Token** tokens);
 
+void write_instructions(AST_Node* tree, int32_t*code);
+
 AST_Node * parse_term(Token** tokens) {
   log_trace("parse_term starts &tokens=%08lx\n", tokens);
   Token *current = *tokens;
@@ -191,7 +193,7 @@ AST_Node * parse_term(Token** tokens) {
     }
     current = current->next;
     *tokens = current;
-    if (child->leaf)
+    if (child->leaf || !child->right)
       return child;
     node = new_branch_node();
     node->left = child;
@@ -315,6 +317,44 @@ void print_postfix(AST_Node* tree) {
   }
 }
 
+
+void write_instructions_rec(AST_Node* tree, int32_t*code, int* code_pos) {
+  if (tree->leaf) {
+    int value = atoi(token_to_string(tree->token));
+    if (tree->apply_unary_minus)
+      value = -value;
+    fprintf(stdout, "%04x %10s[%02x] #0x%04x\n", *code_pos, "PUSH", I_PUSH, value);
+    code[(*code_pos)++] = I_PUSH;
+    code[(*code_pos)++] = value;
+  } else {
+    write_instructions_rec(tree->left, code, code_pos);
+    if (tree->right) {
+      write_instructions_rec(tree->right, code, code_pos);
+      int op =0;
+      switch(tree->operator->kind) {
+        case TOKEN_MULT: op = I_MUL; break;
+        case TOKEN_DIV: op = I_DIV; break;
+        case TOKEN_MOD: op = I_MOD; break;
+        case TOKEN_PLUS: op = I_ADD; break;
+        case TOKEN_MINUS: op = I_SUB; break;
+      }
+      fprintf(stdout, "%04x %10s[%02x] \n", *code_pos, instructions[op], op);
+      code[(*code_pos)++] = op;
+    }
+    if (tree->apply_unary_minus) {
+      fprintf(stdout, "%04x %10s[%02x] \n", *code_pos, instructions[I_NEG], I_NEG);
+      code[(*code_pos)++] = I_NEG;
+    }
+  }
+}
+
+void write_instructions(AST_Node* tree, int32_t*code) {
+  int code_pos = 0;
+  write_instructions_rec(tree, code, &code_pos);
+  fprintf(stdout, "%04x %10s[%02x] \n", code_pos, instructions[I_STOP], I_STOP);
+  code[code_pos++] = I_STOP;
+}
+
 void dump_tokens(Token*token_list) {
   Token *cur = token_list;
   while(cur) {
@@ -322,6 +362,8 @@ void dump_tokens(Token*token_list) {
     cur = cur->next;
   }
 }
+
+int code[4096];
 
 int main(int argc, char**args) {
   bool keep_going = true;
@@ -344,6 +386,8 @@ int main(int argc, char**args) {
       fputs("Syntax error", stderr);
     } else {
       print_postfix(root);
+      puts("\n");
+      write_instructions(root, code);
       free_tree(root);
     }
     free_token_list(token_list);

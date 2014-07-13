@@ -54,8 +54,8 @@ void execute(bool trace) {
           printf("Stack underflow");
           fatal = true;
         } else {
-          x = _stack[sp--];
-          y = _stack[sp];
+          y = _stack[sp--];
+          x = _stack[sp];
           _stack[sp] = x + y;
         }
         break;
@@ -64,13 +64,46 @@ void execute(bool trace) {
           printf("Stack underflow");
           fatal = true;
         } else {
-          x = _stack[sp--];
-          y = _stack[sp];
+          y = _stack[sp--];
+          x = _stack[sp];
           _stack[sp] = x * y;
+        }
+        break;
+      case I_DIV:
+        if (sp < 0) {
+          printf("Stack underflow");
+          fatal = true;
+        } else {
+          y = _stack[sp--];
+          x= _stack[sp];
+          _stack[sp] = x / y;
+        }
+        break;
+      case I_MOD:
+        if (sp < 0) {
+          printf("Stack underflow");
+          fatal = true;
+        } else {
+          y = _stack[sp--];
+          x = _stack[sp];
+          _stack[sp] = x % y;
+        }
+        break;
+      case I_SUB:
+        if (sp < 0) {
+          printf("Stack underflow");
+          fatal = true;
+        } else {
+          y = _stack[sp--];
+          x = _stack[sp];
+          _stack[sp] = x / y;
         }
         break;
       case I_INC:
         _stack[sp]++;
+        break;
+      case I_NEG:
+        _stack[sp] = - _stack[sp];;
         break;
       case I_DEC:
         _stack[sp]--;
